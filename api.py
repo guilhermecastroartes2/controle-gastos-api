@@ -20,7 +20,7 @@ def listar_transacoes():
     dados = []
 
     try:
-        with open(ARQUIVO, 'r') as file:
+        with open(ARQUIVO, 'r', encoding='latin-1', newline='') as file:
             reader = csv.reader(file)
             for linha in reader:
                 if len(linha) < 4:
