@@ -8,13 +8,11 @@ CORS(app)
 
 ARQUIVO = "dados.csv"
 ARQUIVO_USUARIOS = "usuarios.csv"
-
 FORMATO_DATA = "%Y-%m-%d"
 
 # =========================
-# LOGIN
+# CADASTRO
 # =========================
-
 @app.route('/register', methods=['POST'])
 def register():
     dados = request.json
@@ -26,6 +24,9 @@ def register():
     return jsonify({"msg": "Usuário criado"})
 
 
+# =========================
+# LOGIN
+# =========================
 @app.route('/login', methods=['POST'])
 def login():
     dados = request.json
@@ -44,11 +45,11 @@ def login():
 
 
 # =========================
-# TRANSAÇÕES
+# LISTAR TRANSAÇÕES (POR USUÁRIO)
 # =========================
-
 @app.route('/transacoes', methods=['GET'])
 def listar_transacoes():
+    usuario = request.args.get('usuario')
     dados = []
 
     try:
@@ -56,15 +57,18 @@ def listar_transacoes():
             reader = csv.reader(file)
 
             for linha in reader:
-                if len(linha) < 5:
+                if len(linha) < 6:
+                    continue
+
+                if linha[0] != usuario:
                     continue
 
                 dados.append({
-                    "data": linha[0],
-                    "valor": linha[1],
-                    "categoria": linha[2],
-                    "tipo": linha[3],
-                    "descricao": linha[4]
+                    "data": linha[1],
+                    "valor": linha[2],
+                    "categoria": linha[3],
+                    "tipo": linha[4],
+                    "descricao": linha[5]
                 })
 
     except:
@@ -73,6 +77,9 @@ def listar_transacoes():
     return jsonify(dados)
 
 
+# =========================
+# ADICIONAR TRANSAÇÃO
+# =========================
 @app.route('/transacoes', methods=['POST'])
 def adicionar_transacao():
     dados = request.json
@@ -82,6 +89,7 @@ def adicionar_transacao():
     with open(ARQUIVO, 'a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow([
+            dados['usuario'],   # 👈 NOVO
             data,
             dados['valor'],
             dados['categoria'],
