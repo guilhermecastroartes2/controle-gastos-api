@@ -1,91 +1,109 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import csv
-import os
+import sqlite3
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-ARQUIVO = "dados.csv"
-USUARIOS = "usuarios.csv"
+DB_NAME = "controle_gastos.db"
 
-def inicializar_csv():
-    if not os.path.exists(ARQUIVO):
-        with open(ARQUIVO, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["email", "data", "valor", "categoria", "tipo", "descricao"])
+def conectar():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row  # Isso permite acessar colunas pelo nome (ex: linha['valor'])
+    return conn
 
-    if not os.path.exists(USUARIOS):
-        with open(USUARIOS, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["email", "senha"])
+# Função para criar as tabelas se não existirem
+def init_db():
+    with conectar() as conn:
+        cursor = conn.cursor()
+        # Tabela de Usuários
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                email TEXT PRIMARY KEY,
+                senha TEXT NOT NULL
+            )
+        """)
+        # Tabela de Transações
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transacoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                data TEXT,
+                valor REAL,
+                categoria TEXT,
+                tipo TEXT,
+                descricao TEXT,
+                FOREIGN KEY (email) REFERENCES usuarios (email)
+            )
+        """)
+        conn.commit()
 
-inicializar_csv()
+init_db()
 
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
-    with open(USUARIOS, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([data["email"], data["senha"]])
-    return jsonify({"msg": "ok"})
+    try:
+        with conectar() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO usuarios (email, senha) VALUES (?, ?)", (data["email"], data["senha"]))
+            conn.commit()
+        return jsonify({"msg": "ok"})
+    except sqlite3.IntegrityError:
+        return jsonify({"erro": "Este email já está cadastrado"}), 400
 
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-    with open(USUARIOS, newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        next(reader)
-        for linha in reader:
-            if linha[0] == data["email"] and linha[1] == data["senha"]:
-                return jsonify({"msg": "ok"})
-    return jsonify({"erro": "login inválido"}), 401
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM usuarios WHERE email = ? AND senha = ?", (data["email"], data["senha"]))
+        user = cursor.fetchone()
+    
+    if user:
+        return jsonify({"msg": "ok"})
+    return jsonify({"erro": "Login ou senha incorretos"}), 401
 
 @app.route("/transacoes", methods=["GET"])
 def listar():
     email = request.args.get("email")
-    dados = []
-    if not os.path.exists(ARQUIVO): return jsonify([])
-
-    with open(ARQUIVO, newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        next(reader)
-        for linha in reader:
-            if linha[0] == email:
-                dados.append({
-                    "email": linha[0], "data": linha[1], "valor": linha[2],
-                    "categoria": linha[3], "tipo": linha[4], "descricao": linha[5],
-                })
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM transacoes WHERE email = ? ORDER BY data DESC", (email,))
+        linhas = cursor.fetchall()
+    
+    # Converte os resultados para uma lista de dicionários
+    dados = [dict(linha) for linha in linhas]
     return jsonify(dados)
 
 @app.route("/transacoes", methods=["POST"])
 def adicionar():
     data = request.json
-    data_atual = datetime.now().strftime("%Y-%m-%d %H:%M")
+    data_atual = datetime.now().strftime("%d/%m/%Y %H:%M") # Formato brasileiro
     
-    # Salva no CSV
-    nova_linha = [
-        data["email"],
-        data_atual,
-        data["valor"],
-        data["categoria"],
-        data["tipo"],
-        data["descricao"],
-    ]
-
-    with open(ARQUIVO, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(nova_linha)
-
-    return jsonify({
-        "email": data["email"],
-        "data": data_atual,
-        "valor": data["valor"],
-        "categoria": data["categoria"],
-        "tipo": data["tipo"],
-        "descricao": data["descricao"],
-    })
+    try:
+        valor_float = float(data["valor"])
+        with conectar() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO transacoes (email, data, valor, categoria, tipo, descricao)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (data["email"], data_atual, valor_float, data["categoria"], data["tipo"], data["descricao"]))
+            conn.commit()
+            
+        return jsonify({
+            "email": data["email"],
+            "data": data_atual,
+            "valor": valor_float,
+            "categoria": data["categoria"],
+            "tipo": data["tipo"],
+            "descricao": data["descricao"]
+        })
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 400
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000)
+    # Usando host 0.0.0.0 para que o celular consiga acessar o PC na mesma rede
+    app.run(host="0.0.0.0", port=5000, debug=True)
