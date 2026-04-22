@@ -106,4 +106,15 @@ def adicionar():
 
 if __name__ == '__main__':
     # Usando host 0.0.0.0 para que o celular consiga acessar o PC na mesma rede
+    
+    @app.route("/transacoes/<int:id>", methods=["DELETE"])
+    def deletar(id):
+        try:
+            with conectar() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM transacoes WHERE id = ?", (id,))
+                conn.commit()
+            return jsonify({"msg": "Removido com sucesso"})
+        except Exception as e:
+            return jsonify({"erro": str(e)}), 400    
     app.run(host="0.0.0.0", port=5000, debug=True)
