@@ -1,110 +1,104 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import csv
-from datetime import datetime
+import os
 
 app = Flask(__name__)
 CORS(app)
 
 ARQUIVO = "dados.csv"
-ARQUIVO_USUARIOS = "usuarios.csv"
-FORMATO_DATA = "%Y-%m-%d"
+USUARIOS = "usuarios.csv"
 
-# =========================
-# CADASTRO
-# =========================
-@app.route('/register', methods=['POST'])
+# CRIAR ARQUIVOS SE NÃO EXISTIR
+if not os.path.exists(ARQUIVO):
+    with open(ARQUIVO, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["email", "data", "valor", "categoria", "tipo", "descricao"])
+
+if not os.path.exists(USUARIOS):
+    with open(USUARIOS, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["email", "senha"])
+
+
+# 🔐 REGISTER
+@app.route("/register", methods=["POST"])
 def register():
-    dados = request.json
+    data = request.json
 
-    with open(ARQUIVO_USUARIOS, 'a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow([dados['email'], dados['senha']])
+    with open(USUARIOS, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([data["email"], data["senha"]])
 
-    return jsonify({"msg": "Usuário criado"})
+    return jsonify({"msg": "ok"})
 
 
-# =========================
-# LOGIN
-# =========================
-@app.route('/login', methods=['POST'])
+# 🔐 LOGIN
+@app.route("/login", methods=["POST"])
 def login():
-    dados = request.json
+    data = request.json
 
-    try:
-        with open(ARQUIVO_USUARIOS, 'r', encoding='utf-8') as file:
-            reader = csv.reader(file)
+    with open(USUARIOS, newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader)
 
-            for linha in reader:
-                if linha[0] == dados['email'] and linha[1] == dados['senha']:
-                    return jsonify({"msg": "Login sucesso"})
-    except:
-        pass
+        for linha in reader:
+            if linha[0] == data["email"] and linha[1] == data["senha"]:
+                return jsonify({"msg": "ok"})
 
-    return jsonify({"erro": "Credenciais inválidas"}), 401
+    return jsonify({"erro": "login inválido"}), 401
 
 
-# =========================
-# LISTAR TRANSAÇÕES (POR USUÁRIO)
-# =========================
-@app.route('/transacoes', methods=['GET'])
-def listar_transacoes():
-    usuario = request.args.get('usuario')
+# 📥 LISTAR
+@app.route("/transacoes", methods=["GET"])
+def listar():
+    email = request.args.get("email")
     dados = []
 
-    try:
-        with open(ARQUIVO, 'r', encoding='utf-8') as file:
-            reader = csv.reader(file)
+    with open(ARQUIVO, newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader)
 
-            for linha in reader:
-                if len(linha) < 6:
-                    continue
-
-                if linha[0] != usuario:
-                    continue
-
+        for linha in reader:
+            if linha[0] == email:
                 dados.append({
+                    "email": linha[0],
                     "data": linha[1],
                     "valor": linha[2],
                     "categoria": linha[3],
                     "tipo": linha[4],
-                    "descricao": linha[5]
+                    "descricao": linha[5],
                 })
-
-    except:
-        pass
 
     return jsonify(dados)
 
 
-# =========================
-# ADICIONAR TRANSAÇÃO
-# =========================
-@app.route('/transacoes', methods=['POST'])
-def adicionar_transacao():
-    dados = request.json
+# ➕ ADICIONAR
+@app.route("/transacoes", methods=["POST"])
+def adicionar():
+    data = request.json
 
-    data = datetime.now().strftime(FORMATO_DATA)
+    nova = [
+        data["email"],
+        "2026-01-01",
+        data["valor"],
+        data["categoria"],
+        data["tipo"],
+        data["descricao"],
+    ]
 
-    with open(ARQUIVO, 'a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow([
-            dados['usuario'],   # 👈 NOVO
-            data,
-            dados['valor'],
-            dados['categoria'],
-            dados['tipo'],
-            dados['descricao']
-        ])
+    with open(ARQUIVO, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(nova)
 
     return jsonify({
-        "data": data,
-        "valor": dados['valor'],
-        "categoria": dados['categoria'],
-        "tipo": dados['tipo'],
-        "descricao": dados['descricao']
+        "email": data["email"],
+        "data": "2026-01-01",
+        "valor": data["valor"],
+        "categoria": data["categoria"],
+        "tipo": data["tipo"],
+        "descricao": data["descricao"],
     })
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+app.run(host="0.0.0.0", port=5000)
